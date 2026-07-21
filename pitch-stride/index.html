@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ピッチ・ストライド解析ツール</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --panel:#ffffff; --ink:#1a2330; --sub:#5b6b7c;
+    --accent:#1565c0; --accent2:#2e7d32; --warn:#c62828; --line:#dde3ea;
+    --chip:#eef3f8;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{margin:0; font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",sans-serif; background:var(--bg); color:var(--ink);}
+  header{background:var(--accent); color:#fff; padding:10px 16px;}
+  header h1{margin:0; font-size:16px; font-weight:700;}
+  header p{margin:2px 0 0; font-size:11px; opacity:.85;}
+  main{max-width:760px; margin:0 auto; padding:10px 10px 60px;}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px;}
+  .panel h2{margin:0 0 8px; font-size:13px; color:var(--sub); font-weight:700;}
+
+  /* 動画 */
+  #videoWrap{position:relative; background:#000; border-radius:8px; overflow:hidden; touch-action:none;}
+  #videoWrap.empty{min-height:180px; display:flex; align-items:center; justify-content:center;}
+  #video{display:block; width:100%; transform-origin:0 0;}
+  #dropHint{color:#aaa; font-size:13px; text-align:center; padding:20px;}
+  #timeBadge{position:absolute; left:8px; top:8px; background:rgba(0,0,0,.65); color:#fff;
+    font-size:12px; padding:4px 8px; border-radius:6px; font-variant-numeric:tabular-nums; pointer-events:none;}
+  #zoomBtns{position:absolute; right:8px; top:8px; display:flex; gap:4px;}
+  #zoomBtns button{background:rgba(0,0,0,.55); color:#fff; border:none; border-radius:6px;
+    font-size:12px; padding:4px 8px;}
+  #zoomBtns button.on{background:var(--accent);}
+
+  /* シークバー */
+  .seekRow{display:flex; align-items:center; gap:8px; margin-top:8px;}
+  #seek{flex:1; height:26px; margin:0;}
+  #seekTime{font-size:11px; color:var(--sub); font-variant-numeric:tabular-nums; min-width:96px; text-align:right;}
+
+  /* コマ送り */
+  .transport{display:flex; gap:6px; margin-top:8px;}
+  .transport button{flex:1; font-size:15px; padding:12px 0; border:1px solid var(--line);
+    border-radius:8px; background:#fff; font-weight:700; color:var(--ink);}
+  .transport button:active{background:#e3edf7;}
+  #playBtn{background:var(--ink); color:#fff; border-color:var(--ink);}
+  .rateRow{display:flex; gap:6px; margin-top:6px; align-items:center; font-size:12px; color:var(--sub);}
+  .rateRow button{flex:1; padding:6px 0; font-size:12px; border:1px solid var(--line); border-radius:6px; background:#fff;}
+  .rateRow button.on{background:var(--accent); color:#fff; border-color:var(--accent);}
+
+  /* マークボタン */
+  .markBtns{display:grid; grid-template-columns:1fr 1.3fr 1fr; gap:6px;}
+  .markBtns button{padding:14px 4px; font-size:14px; font-weight:700; border-radius:8px; border:none; color:#fff;}
+  #btnIn{background:var(--accent);}
+  #btnTd{background:var(--accent2); font-size:16px;}
+  #btnOut{background:var(--accent);}
+  .markBtns button:active{opacity:.8;}
+  .markBtns small{display:block; font-weight:400; font-size:10px; opacity:.85; margin-top:2px;}
+
+  /* マーク一覧 */
+  .markRow{display:flex; align-items:center; gap:8px; font-size:13px; margin-top:6px; flex-wrap:wrap;}
+  .markRow .lbl{width:64px; color:var(--sub); font-weight:700; font-size:12px;}
+  .chip{background:var(--chip); border:1px solid var(--line); border-radius:14px; padding:4px 8px;
+    font-variant-numeric:tabular-nums; font-size:12px; display:inline-flex; align-items:center; gap:6px;}
+  .chip button{border:none; background:none; color:var(--warn); font-size:14px; padding:0 2px; line-height:1;}
+  .chip .t{color:var(--accent); text-decoration:underline;}
+  .none{color:#aab; font-size:12px;}
+
+  /* 設定 */
+  .setRow{display:flex; align-items:center; gap:8px; margin-top:6px; font-size:13px; flex-wrap:wrap;}
+  .setRow label{width:110px; color:var(--sub); font-size:12px;}
+  .setRow input[type=number]{width:80px; padding:6px; font-size:14px; border:1px solid var(--line); border-radius:6px;}
+  .fpsBtns{display:flex; gap:4px;}
+  .fpsBtns button{padding:6px 10px; font-size:12px; border:1px solid var(--line); border-radius:6px; background:#fff;}
+  .fpsBtns button.on{background:var(--accent); color:#fff; border-color:var(--accent);}
+
+  /* 結果 */
+  #results{display:grid; grid-template-columns:repeat(2,1fr); gap:8px;}
+  .res{background:var(--chip); border-radius:8px; padding:10px;}
+  .res .k{font-size:11px; color:var(--sub);}
+  .res .v{font-size:22px; font-weight:800; font-variant-numeric:tabular-nums;}
+  .res .v small{font-size:12px; font-weight:400; color:var(--sub);}
+  .res.main{background:#e8f2e9;}
+  .res.main .v{color:var(--accent2);}
+  #warnBox{color:var(--warn); font-size:12px; margin-top:8px; line-height:1.6;}
+  #stepList{font-size:11px; color:var(--sub); margin-top:8px; line-height:1.7;}
+
+  details{margin-top:4px;}
+  summary{font-size:13px; color:var(--accent); font-weight:700; cursor:pointer;}
+  .help{font-size:12px; line-height:1.8; color:var(--ink);}
+  .help b{color:var(--accent);}
+  input[type=file]{font-size:13px; width:100%;}
+  .resetRow{text-align:right; margin-top:8px;}
+  .resetRow button{font-size:12px; color:var(--warn); background:none; border:1px solid var(--warn); border-radius:6px; padding:6px 12px;}
+
+  /* 保存 */
+  #btnSave{width:100%; margin-top:10px; padding:14px; font-size:15px; font-weight:700;
+    color:#fff; background:var(--accent2); border:none; border-radius:8px;}
+  #btnSave:active{opacity:.85;}
+  #saveOverlay{position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:100;
+    display:flex; align-items:center; justify-content:center; padding:16px;}
+  .saveInner{max-width:100%; max-height:100%; overflow:auto; text-align:center;}
+  #saveImg{max-width:100%; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,.5);}
+  .saveHint{color:#fff; font-size:13px; margin:12px 0 8px;}
+  .saveBtns{display:flex; gap:8px; justify-content:center;}
+  .saveBtns a, .saveBtns button{padding:12px 18px; font-size:14px; font-weight:700; border-radius:8px;
+    border:none; text-decoration:none; display:inline-block;}
+  #saveDl{background:var(--accent2); color:#fff;}
+  #saveClose{background:#fff; color:var(--ink);}
+</style>
+</head>
+<body>
+<header>
+  <h1>ピッチ・ストライド解析ツール</h1>
+  <p>走行動画から区間速度・ピッチ・ストライドを算出（20m助走 → 10m測定 対応）</p>
+</header>
+<main>
+
+  <div class="panel">
+    <h2>1. 動画を読み込む</h2>
+    <input type="file" id="fileInput" accept="video/*">
+    <div id="videoWrap" class="empty">
+      <div id="dropHint">動画を選択してください<br><small>スマホで撮ったファイルをそのまま読み込めます（アップロードはされません）</small></div>
+      <video id="video" playsinline muted style="display:none"></video>
+      <div id="timeBadge" style="display:none">0.000 s ／ F0</div>
+      <div id="zoomBtns" style="display:none">
+        <button data-z="1" class="on">×1</button>
+        <button data-z="2">×2</button>
+        <button data-z="4">×4</button>
+      </div>
+    </div>
+    <div class="seekRow">
+      <input type="range" id="seek" min="0" max="1000" value="0" step="1" disabled>
+      <span id="seekTime">0.000 / 0.000 s</span>
+    </div>
+    <div class="transport">
+      <button id="b-10">◀◀<br><small>−10コマ</small></button>
+      <button id="b-1">◀<br><small>−1コマ</small></button>
+      <button id="playBtn">再生</button>
+      <button id="b+1">▶<br><small>＋1コマ</small></button>
+      <button id="b+10">▶▶<br><small>＋10コマ</small></button>
+    </div>
+    <div class="rateRow">
+      <span>再生速度</span>
+      <button data-r="0.1">0.1×</button>
+      <button data-r="0.25">0.25×</button>
+      <button data-r="0.5">0.5×</button>
+      <button data-r="1" class="on">1×</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>2. マークする（コマ送りで合わせてからタップ）</h2>
+    <div class="markBtns">
+      <button id="btnIn">区間IN<small>開始ラインを腰が通過</small></button>
+      <button id="btnTd">接地 ＋<small>足が着いた瞬間（4点以上推奨）</small></button>
+      <button id="btnOut">区間OUT<small>終了ラインを腰が通過</small></button>
+    </div>
+    <div class="markRow"><span class="lbl">区間IN</span><span id="listIn"><span class="none">未設定</span></span></div>
+    <div class="markRow"><span class="lbl">接地</span><span id="listTd"><span class="none">未設定</span></span></div>
+    <div class="markRow"><span class="lbl">区間OUT</span><span id="listOut"><span class="none">未設定</span></span></div>
+    <div class="resetRow"><button id="btnReset">マークを全消去</button></div>
+  </div>
+
+  <div class="panel">
+    <h2>3. 結果</h2>
+    <div id="results">
+      <div class="res"><div class="k">区間タイム</div><div class="v" id="rTime">–<small> 秒</small></div></div>
+      <div class="res"><div class="k">平均速度</div><div class="v" id="rSpeed">–<small> m/s</small></div></div>
+      <div class="res"><div class="k">ピッチ</div><div class="v" id="rPitch">–<small> 歩/秒</small></div></div>
+      <div class="res main"><div class="k">ストライド</div><div class="v" id="rStride">–<small> m</small></div></div>
+    </div>
+    <div id="stepList"></div>
+    <div id="warnBox"></div>
+    <div class="setRow" style="margin-top:10px">
+      <label style="width:auto">選手名・メモ（任意）</label>
+      <input type="text" id="memoInput" placeholder="例）たろう" style="flex:1; min-width:120px; padding:8px; font-size:14px; border:1px solid var(--line); border-radius:6px;">
+    </div>
+    <button id="btnSave">結果を画像で保存</button>
+  </div>
+
+  <div class="panel">
+    <h2>設定</h2>
+    <div class="setRow">
+      <label>撮影fps</label>
+      <div class="fpsBtns" id="fpsBtns">
+        <button data-f="30">30</button>
+        <button data-f="60" class="on">60</button>
+        <button data-f="120">120</button>
+        <button data-f="240">240</button>
+      </div>
+      <input type="number" id="fpsInput" value="60" min="1" step="1">
+    </div>
+    <div class="setRow">
+      <label>測定区間の距離</label>
+      <input type="number" id="distInput" value="10" min="1" step="0.1"> m
+    </div>
+    <div class="setRow">
+      <label>スロー係数</label>
+      <input type="number" id="slowInput" value="1" min="0.1" step="0.1">
+      <span style="font-size:11px;color:var(--sub)">通常は1。編集書き出しで1/8倍速になった動画なら8</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <details>
+      <summary>使い方・計算のしくみ</summary>
+      <div class="help">
+        <p><b>撮影のコツ</b><br>
+        ・測定区間（10m）の真横・中央に正対して<b>固定</b>で撮る<br>
+        ・開始／終了ラインにコーンやテープの目印を置く<br>
+        ・60fps以上推奨（iPhoneスロー撮影 120/240fps ならなお良い）<br>
+        ・スロー撮影は<b>撮ったままのオリジナルファイル</b>を読み込むこと。編集アプリで書き出すと再生速度が変わってしまう場合があります（その場合はスロー係数で補正）</p>
+        <p><b>操作手順</b><br>
+        ① 撮影fpsを合わせる → 動画を読み込む<br>
+        ② コマ送りで「腰が開始ラインを通過した瞬間」に合わせ、<b>区間IN</b><br>
+        ③ 区間内（前後にはみ出してもOK）の接地の瞬間ごとに<b>接地＋</b>（4点以上推奨）<br>
+        ④ 「腰が終了ラインを通過した瞬間」で<b>区間OUT</b> → 結果が自動計算されます</p>
+        <p><b>計算のしくみ</b><br>
+        ・速度 ＝ 距離 ÷ 区間タイム（IN→OUT）<br>
+        ・ピッチ ＝ (接地数 − 1) ÷ (最初の接地 → 最後の接地の時間)<br>
+        ・<b>ストライド ＝ 速度 ÷ ピッチ</b><br>
+        接地から接地はつねに整数歩なので、ライン際の「中途半端な一歩」を数える必要がありません。</p>
+        <p><b>キーボード（PC）</b><br>
+        ←→：±1コマ　Shift+←→：±10コマ　スペース：再生/停止<br>
+        I：区間IN　O：区間OUT　Enter または T：接地</p>
+        <p><b>ライン通過の判定</b><br>
+        足ではなく<b>腰（体幹の中心）</b>がライン（目印コーン）の延長線を横切ったコマを採用。×2/×4ズームで拡大するとブレにくいです。</p>
+      </div>
+    </details>
+  </div>
+
+  <div id="saveOverlay" style="display:none">
+    <div class="saveInner">
+      <img id="saveImg" alt="解析結果">
+      <p class="saveHint">スマホ：画像を<b>長押し</b>して保存／PC：下のボタンで保存</p>
+      <div class="saveBtns">
+        <a id="saveDl" download="pitch_stride.png">画像をダウンロード</a>
+        <button id="saveClose">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+<script>
+(function(){
+  "use strict";
+  var video = document.getElementById("video");
+  var wrap = document.getElementById("videoWrap");
+  var badge = document.getElementById("timeBadge");
+  var marks = { tIn:null, tOut:null, td:[] };
+  var fps = 60, zoom = 1, panX = 0, panY = 0;
+  var seek = document.getElementById("seek");
+  var seekTime = document.getElementById("seekTime");
+  var seeking = false;
+
+  // ---------- 設定 ----------
+  var fpsInput = document.getElementById("fpsInput");
+  var distInput = document.getElementById("distInput");
+  var slowInput = document.getElementById("slowInput");
+  try{
+    var saved = JSON.parse(localStorage.getItem("psTool")||"{}");
+    if(saved.fps){ fps = saved.fps; fpsInput.value = saved.fps; }
+    if(saved.dist) distInput.value = saved.dist;
+  }catch(e){}
+  function saveSettings(){
+    fps = Math.max(1, parseFloat(fpsInput.value)||60);
+    try{ localStorage.setItem("psTool", JSON.stringify({fps:fps, dist:distInput.value})); }catch(e){}
+    var btns = document.querySelectorAll("#fpsBtns button");
+    for(var i=0;i<btns.length;i++) btns[i].classList.toggle("on", parseFloat(btns[i].dataset.f)===fps);
+    updateBadge(); calc();
+  }
+  document.getElementById("fpsBtns").addEventListener("click", function(e){
+    if(e.target.dataset.f){ fpsInput.value = e.target.dataset.f; saveSettings(); }
+  });
+  fpsInput.addEventListener("change", saveSettings);
+  distInput.addEventListener("change", function(){ saveSettings(); });
+  slowInput.addEventListener("change", calc);
+  saveSettings();
+
+  // ---------- 動画読み込み ----------
+  document.getElementById("fileInput").addEventListener("change", function(e){
+    var f = e.target.files[0];
+    if(!f) return;
+    video.src = URL.createObjectURL(f);
+    video.style.display = "block";
+    document.getElementById("dropHint").style.display = "none";
+    document.getElementById("timeBadge").style.display = "block";
+    document.getElementById("zoomBtns").style.display = "flex";
+    wrap.classList.remove("empty");
+    marks = { tIn:null, tOut:null, td:[] };
+    renderMarks(); calc();
+  });
+
+  // ---------- コマ送り ----------
+  function curFrame(){ return Math.round(video.currentTime * fps); }
+  function seekFrame(f){
+    video.pause();
+    f = Math.max(0, f);
+    video.currentTime = f / fps + 1/(fps*4); // コマの中央寄りにシークして表示を安定させる
+  }
+  function step(n){ seekFrame(curFrame()+n); }
+  document.getElementById("b-10").addEventListener("click", function(){ step(-10); });
+  document.getElementById("b-1").addEventListener("click", function(){ step(-1); });
+  document.getElementById("b+1").addEventListener("click", function(){ step(1); });
+  document.getElementById("b+10").addEventListener("click", function(){ step(10); });
+
+  var playBtn = document.getElementById("playBtn");
+  playBtn.addEventListener("click", function(){
+    if(video.paused){ video.play(); } else { video.pause(); }
+  });
+  video.addEventListener("play", function(){ playBtn.textContent = "停止"; });
+  video.addEventListener("pause", function(){ playBtn.textContent = "再生"; });
+
+  document.querySelector(".rateRow").addEventListener("click", function(e){
+    if(!e.target.dataset.r) return;
+    video.playbackRate = parseFloat(e.target.dataset.r);
+    var btns = document.querySelectorAll(".rateRow button");
+    for(var i=0;i<btns.length;i++) btns[i].classList.toggle("on", btns[i]===e.target);
+  });
+
+  function updateBadge(){
+    badge.textContent = video.currentTime.toFixed(3) + " s ／ F" + curFrame();
+    if(seek && video.duration){
+      if(!seeking) seek.value = Math.round(video.currentTime / video.duration * 1000);
+      seekTime.textContent = video.currentTime.toFixed(3) + " / " + video.duration.toFixed(3) + " s";
+    }
+  }
+  video.addEventListener("timeupdate", updateBadge);
+  video.addEventListener("seeked", updateBadge);
+  video.addEventListener("loadedmetadata", function(){
+    seek.disabled = false;
+    video.playbackRate = 1;
+    updateBadge();
+  });
+  seek.addEventListener("input", function(){
+    if(!video.duration) return;
+    seeking = true;
+    video.pause();
+    video.currentTime = seek.value / 1000 * video.duration;
+  });
+  seek.addEventListener("change", function(){ seeking = false; });
+
+  // ---------- ズーム＆パン ----------
+  document.getElementById("zoomBtns").addEventListener("click", function(e){
+    if(!e.target.dataset.z) return;
+    zoom = parseFloat(e.target.dataset.z);
+    if(zoom===1){ panX = 0; panY = 0; }
+    var btns = document.querySelectorAll("#zoomBtns button");
+    for(var i=0;i<btns.length;i++) btns[i].classList.toggle("on", btns[i]===e.target);
+    applyZoom();
+  });
+  function applyZoom(){
+    var maxX = wrap.clientWidth*(zoom-1), maxY = wrap.clientHeight*(zoom-1);
+    panX = Math.min(0, Math.max(-maxX, panX));
+    panY = Math.min(0, Math.max(-maxY, panY));
+    video.style.transform = "translate("+panX+"px,"+panY+"px) scale("+zoom+")";
+  }
+  var drag = null;
+  wrap.addEventListener("pointerdown", function(e){
+    if(zoom===1) return;
+    if(e.target.closest("#zoomBtns")) return; // ズームボタンのタップは横取りしない
+    drag = {x:e.clientX, y:e.clientY, px:panX, py:panY};
+    wrap.setPointerCapture(e.pointerId);
+  });
+  wrap.addEventListener("pointermove", function(e){
+    if(!drag) return;
+    panX = drag.px + (e.clientX - drag.x);
+    panY = drag.py + (e.clientY - drag.y);
+    applyZoom();
+  });
+  wrap.addEventListener("pointerup", function(){ drag = null; });
+
+  // ---------- マーク ----------
+  function fmt(t){ return t.toFixed(3); }
+  document.getElementById("btnIn").addEventListener("click", function(){ if(video.src){ marks.tIn = video.currentTime; renderMarks(); calc(); } });
+  document.getElementById("btnOut").addEventListener("click", function(){ if(video.src){ marks.tOut = video.currentTime; renderMarks(); calc(); } });
+  document.getElementById("btnTd").addEventListener("click", function(){
+    if(!video.src) return;
+    var t = video.currentTime;
+    // ほぼ同じコマの二重登録は無視
+    for(var i=0;i<marks.td.length;i++){ if(Math.abs(marks.td[i]-t) < 0.5/fps) return; }
+    marks.td.push(t); marks.td.sort(function(a,b){return a-b;});
+    renderMarks(); calc();
+  });
+  document.getElementById("btnReset").addEventListener("click", function(){
+    marks = { tIn:null, tOut:null, td:[] };
+    renderMarks(); calc();
+  });
+
+  function chip(t, onDel){
+    var span = document.createElement("span");
+    span.className = "chip";
+    var a = document.createElement("span");
+    a.className = "t"; a.textContent = fmt(t)+"s";
+    a.addEventListener("click", function(){ seekFrame(Math.round(t*fps)); });
+    span.appendChild(a);
+    var del = document.createElement("button");
+    del.textContent = "✕";
+    del.addEventListener("click", onDel);
+    span.appendChild(del);
+    return span;
+  }
+  function renderMarks(){
+    var li = document.getElementById("listIn");
+    var lo = document.getElementById("listOut");
+    var lt = document.getElementById("listTd");
+    li.innerHTML = ""; lo.innerHTML = ""; lt.innerHTML = "";
+    if(marks.tIn!=null) li.appendChild(chip(marks.tIn, function(){ marks.tIn=null; renderMarks(); calc(); }));
+    else li.innerHTML = '<span class="none">未設定</span>';
+    if(marks.tOut!=null) lo.appendChild(chip(marks.tOut, function(){ marks.tOut=null; renderMarks(); calc(); }));
+    else lo.innerHTML = '<span class="none">未設定</span>';
+    if(marks.td.length){
+      marks.td.forEach(function(t, idx){
+        lt.appendChild(chip(t, function(){ marks.td.splice(idx,1); renderMarks(); calc(); }));
+      });
+    } else lt.innerHTML = '<span class="none">未設定</span>';
+  }
+
+  // ---------- 計算 ----------
+  function setRes(id, val, digits){
+    document.getElementById(id).childNodes[0].nodeValue = (val==null ? "–" : val.toFixed(digits));
+  }
+  function calc(){
+    var slow = Math.max(0.1, parseFloat(slowInput.value)||1);
+    var dist = parseFloat(distInput.value)||10;
+    var warns = [];
+    var time=null, speed=null, pitch=null, stride=null;
+
+    if(marks.tIn!=null && marks.tOut!=null){
+      time = (marks.tOut - marks.tIn) / slow;
+      if(time <= 0){ warns.push("区間OUTが区間INより前になっています。"); time = null; }
+      else speed = dist / time;
+    }
+    if(marks.td.length >= 2){
+      var span = (marks.td[marks.td.length-1] - marks.td[0]) / slow;
+      if(span > 0) pitch = (marks.td.length - 1) / span;
+      if(marks.td.length < 4) warns.push("接地は4点以上マークすると精度が上がります（現在 "+marks.td.length+" 点）。");
+      // 1歩ごとの時間のばらつきチェック（マーク漏れ・二度押し検出）
+      var steps = [];
+      for(var i=1;i<marks.td.length;i++) steps.push((marks.td[i]-marks.td[i-1])/slow);
+      var avg = steps.reduce(function(a,b){return a+b;},0)/steps.length;
+      var stepTxt = steps.map(function(s,i){ return "歩"+(i+1)+": "+s.toFixed(3)+"s"; }).join("　");
+      document.getElementById("stepList").textContent = steps.length ? "1歩ごとの時間 → " + stepTxt : "";
+      for(var j=0;j<steps.length;j++){
+        if(steps[j] > avg*1.6 || steps[j] < avg*0.55){
+          warns.push("1歩ごとの時間にばらつきがあります。接地のマーク漏れ・重複がないか確認してください。");
+          break;
+        }
+      }
+    } else {
+      document.getElementById("stepList").textContent = "";
+      if(marks.td.length===1) warns.push("接地はあと1点以上必要です。");
+    }
+    if(speed!=null && pitch!=null) stride = speed / pitch;
+
+    setRes("rTime", time, 3);
+    setRes("rSpeed", speed, 2);
+    setRes("rPitch", pitch, 2);
+    setRes("rStride", stride, 2);
+    document.getElementById("warnBox").innerHTML = warns.join("<br>");
+  }
+  calc();
+
+  // ---------- 画像で保存 ----------
+  function twoDigit(n){ return (n<10?"0":"")+n; }
+  function drawText(ctx,t,x,y,font,color,align){
+    ctx.font=font; ctx.fillStyle=color; ctx.textAlign=align||"left"; ctx.fillText(t,x,y);
+  }
+  document.getElementById("btnSave").addEventListener("click", function(){
+    var W = 1080;
+    var vw = video.videoWidth, vh = video.videoHeight;
+    var frameH = (video.src && vw && vh) ? Math.round(vh * (W/vw)) : 0;
+    var panelH = 430;
+    var canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = frameH + panelH;
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#0d2137"; ctx.fillRect(0,0,W,canvas.height);
+    if(frameH){ try{ ctx.drawImage(video,0,0,W,frameH); }catch(e){} }
+
+    var top = frameH;
+    // ヘッダー帯
+    ctx.fillStyle = "#0d2137"; ctx.fillRect(0,top,W,panelH);
+    ctx.fillStyle = "#1565c0"; ctx.fillRect(0,top,W,8);
+    var memo = (document.getElementById("memoInput").value||"").trim();
+    var d = new Date();
+    var ds = d.getFullYear()+"/"+twoDigit(d.getMonth()+1)+"/"+twoDigit(d.getDate())+" "+twoDigit(d.getHours())+":"+twoDigit(d.getMinutes());
+    drawText(ctx, "ピッチ・ストライド解析" + (memo? "　"+memo : ""), 40, top+56, "bold 34px sans-serif", "#fff");
+    drawText(ctx, ds, W-40, top+56, "24px sans-serif", "#9fb6cc", "right");
+
+    // 2x2 メトリクス
+    function val(id){ var n=document.getElementById(id).childNodes[0]; return (n?n.nodeValue:"–").trim(); }
+    var metrics = [
+      ["区間タイム", val("rTime")+" 秒"],
+      ["平均速度", val("rSpeed")+" m/s"],
+      ["ピッチ", val("rPitch")+" 歩/秒"],
+      ["ストライド", val("rStride")+" m"]
+    ];
+    var gx=40, gy=top+95, cw=(W-80)/2, ch=130;
+    for(var i=0;i<4;i++){
+      var cx = gx + (i%2)*cw, cy = gy + Math.floor(i/2)*ch;
+      ctx.fillStyle = (i===3)? "#12362a" : "#12314a";
+      ctx.fillRect(cx, cy, cw-16, ch-16);
+      drawText(ctx, metrics[i][0], cx+20, cy+38, "22px sans-serif", "#9fb6cc");
+      drawText(ctx, metrics[i][1], cx+20, cy+90, "bold 46px sans-serif", (i===3)?"#7fe0a0":"#fff");
+    }
+    // フッター
+    var dist = parseFloat(distInput.value)||10;
+    var foot = "測定距離 "+dist+"m ／ "+fps+"fps ／ 接地"+marks.td.length+"点";
+    drawText(ctx, foot, 40, top+panelH-24, "22px sans-serif", "#9fb6cc");
+
+    canvas.toBlob(function(blob){
+      var url = URL.createObjectURL(blob);
+      var img = document.getElementById("saveImg");
+      var dl = document.getElementById("saveDl");
+      img.src = url;
+      dl.href = url;
+      dl.download = "ピッチ解析_"+(memo?memo+"_":"")+d.getFullYear()+twoDigit(d.getMonth()+1)+twoDigit(d.getDate())+"_"+twoDigit(d.getHours())+twoDigit(d.getMinutes())+".png";
+      document.getElementById("saveOverlay").style.display = "flex";
+    }, "image/png");
+  });
+  document.getElementById("saveClose").addEventListener("click", function(){
+    document.getElementById("saveOverlay").style.display = "none";
+  });
+  document.getElementById("saveOverlay").addEventListener("click", function(e){
+    if(e.target.id==="saveOverlay") this.style.display = "none";
+  });
+
+  // ---------- キーボード ----------
+  document.addEventListener("keydown", function(e){
+    if(e.target.tagName==="INPUT") return;
+    if(e.key==="ArrowRight"){ step(e.shiftKey?10:1); e.preventDefault(); }
+    else if(e.key==="ArrowLeft"){ step(e.shiftKey?-10:-1); e.preventDefault(); }
+    else if(e.key===" "){ playBtn.click(); e.preventDefault(); }
+    else if(e.key==="i"||e.key==="I"){ document.getElementById("btnIn").click(); }
+    else if(e.key==="o"||e.key==="O"){ document.getElementById("btnOut").click(); }
+    else if(e.key==="Enter"||e.key==="t"||e.key==="T"){ document.getElementById("btnTd").click(); e.preventDefault(); }
+  });
+})();
+</script>
+</body>
+</html>
