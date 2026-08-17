@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f6f4e">
+<title>STARTUS 議事録アップロード</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg:#f7f7f5; --card:#fff; --line:#e2e0db; --ink:#1f1e1c; --muted:#6b6862;
+    --accent:#2f6f4e; --danger:#b3261e;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    margin:0; padding:16px 16px calc(16px + env(safe-area-inset-bottom));
+    background:var(--bg); color:var(--ink); font-size:16px; line-height:1.7;
+    font-family:-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  }
+  .wrap { max-width:560px; margin:0 auto; }
+  h1 { font-size:19px; margin:4px 0 18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:14px; margin:0 0 12px; color:var(--muted); font-weight:600; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input[type=text], input[type=url] {
+    width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:8px;
+    font:inherit; font-size:15px; background:#fcfcfb; color:var(--ink);
+  }
+  button {
+    font:inherit; font-weight:600; border:0; border-radius:10px; padding:15px;
+    width:100%; background:var(--accent); color:#fff; cursor:pointer;
+  }
+  button:disabled { opacity:.45; }
+  button.sub { background:#fff; color:var(--ink); border:1px solid var(--line); font-weight:400; padding:11px; }
+  .types { display:grid; gap:10px; }
+  .type {
+    display:flex; align-items:center; gap:12px; padding:15px;
+    border:2px solid var(--line); border-radius:10px; cursor:pointer; background:#fcfcfb;
+  }
+  .type.on { border-color:var(--accent); background:#eef4f0; }
+  .type .dot { width:20px; height:20px; border-radius:50%; border:2px solid var(--line); flex:none; }
+  .type.on .dot { border-color:var(--accent); border-width:6px; }
+  .file { display:flex; align-items:center; gap:12px; }
+  .file .name { font-weight:600; word-break:break-all; }
+  .file .size { color:var(--muted); font-size:13px; }
+  .bar { height:8px; background:var(--line); border-radius:99px; overflow:hidden; margin-top:12px; }
+  .bar > i { display:block; height:100%; width:0; background:var(--accent); transition:width .2s; }
+  .msg { font-size:14px; margin-top:10px; }
+  .ok { color:var(--accent); font-weight:600; }
+  .ng { color:var(--danger); font-weight:600; }
+  .note { font-size:13px; color:var(--muted); }
+  .hide { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>議事録アップロード</h1>
+
+  <!-- 初回設定 -->
+  <div class="card hide" id="setupCard">
+    <h2>初回設定</h2>
+    <label>アップロード先URL（GASのウェブアプリURL）</label>
+    <input type="url" id="endpoint" placeholder="https://script.google.com/macros/s/..../exec" autocomplete="off">
+    <label>合言葉（PWA_TOKEN）</label>
+    <input type="text" id="token" placeholder="setup() のログに出た文字列" autocomplete="off">
+    <div style="margin-top:14px"><button id="saveBtn">保存する</button></div>
+    <div class="msg" id="setupMsg"></div>
+  </div>
+
+  <!-- 本体 -->
+  <div id="main" class="hide">
+
+    <div class="card">
+      <h2>音声ファイル</h2>
+      <div id="fileBox" class="file">
+        <div class="note">共有シートから送るか、下のボタンで選んでください。</div>
+      </div>
+      <div style="margin-top:12px">
+        <button class="sub" id="pickBtn">ファイルを選ぶ</button>
+        <input type="file" id="picker" accept="audio/*,video/*" class="hide">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>どの会議ですか</h2>
+      <div class="types" id="types"><div class="note">読み込み中…</div></div>
+    </div>
+
+    <button id="sendBtn" disabled>送信する</button>
+    <div class="bar hide" id="bar"><i></i></div>
+    <div class="msg" id="msg"></div>
+
+    <div class="card" style="margin-top:18px">
+      <h2>設定</h2>
+      <div class="note" id="epLabel"></div>
+      <div style="margin-top:10px"><button class="sub" id="resetBtn">設定をやり直す</button></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const LS = 'startus-minutes-uploader';
+const CHUNK = 3 * 1024 * 1024;          // 3MB ずつ送る
+let cfg = null, file = null, typeSlug = null;
+
+const $ = (id) => document.getElementById(id);
+const show = (el, on) => el.classList.toggle('hide', !on);
+
+/* ---------- 設定 ---------- */
+function loadCfg() {
+  try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; }
+}
+function saveCfg(c) { localStorage.setItem(LS, JSON.stringify(c)); }
+
+$('saveBtn').onclick = async () => {
+  const endpoint = $('endpoint').value.trim();
+  const token = $('token').value.trim();
+  if (!endpoint || !token) { $('setupMsg').innerHTML = '<span class="ng">両方入力してください</span>'; return; }
+  $('setupMsg').textContent = '確認中…';
+  try {
+    const r = await post({ action: 'types', token }, endpoint);
+    cfg = { endpoint, token, types: r.types };
+    saveCfg(cfg);
+    start();
+  } catch (e) {
+    $('setupMsg').innerHTML = '<span class="ng">つながりませんでした: ' + esc(e.message) + '</span>';
+  }
+};
+
+$('resetBtn').onclick = () => {
+  if (!confirm('設定を消してやり直しますか？')) return;
+  localStorage.removeItem(LS);
+  location.href = './';
+};
+
+/* ---------- 通信 ---------- */
+// Content-Type を指定しない = プリフライトが飛ばない（GASはOPTIONSに応答できないため）
+async function post(payload, endpoint) {
+  const res = await fetch(endpoint || cfg.endpoint, { method: 'POST', body: JSON.stringify(payload) });
+  const txt = await res.text();
+  let j;
+  try { j = JSON.parse(txt); } catch (e) { throw new Error('応答が不正です'); }
+  if (!j.ok) throw new Error(j.error || '不明なエラー');
+  return j;
+}
+
+function b64(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1] || '');
+    r.onerror = () => rej(new Error('ファイルを読めませんでした'));
+    r.readAsDataURL(blob);
+  });
+}
+
+/* ---------- 画面 ---------- */
+function renderTypes() {
+  const box = $('types');
+  box.innerHTML = '';
+  (cfg.types || []).forEach((t, i) => {
+    const d = document.createElement('div');
+    d.className = 'type' + (i === 0 ? ' on' : '');
+    d.innerHTML = '<span class="dot"></span><span>' + esc(t.label) + '</span>';
+    d.onclick = () => {
+      [...box.children].forEach((c) => c.classList.remove('on'));
+      d.classList.add('on');
+      typeSlug = t.slug;
+      refresh();
+    };
+    box.appendChild(d);
+    if (i === 0) typeSlug = t.slug;
+  });
+}
+
+function setFile(f) {
+  file = f;
+  $('fileBox').innerHTML = f
+    ? '<div><div class="name">' + esc(f.name || '(名前なし)') + '</div>' +
+      '<div class="size">' + (f.size / 1024 / 1024).toFixed(1) + ' MB</div></div>'
+    : '<div class="note">共有シートから送るか、下のボタンで選んでください。</div>';
+  refresh();
+}
+
+function refresh() { $('sendBtn').disabled = !(file && typeSlug); }
+
+$('pickBtn').onclick = () => $('picker').click();
+$('picker').onchange = (e) => { if (e.target.files[0]) setFile(e.target.files[0]); };
+
+/* ---------- 送信 ---------- */
+$('sendBtn').onclick = async () => {
+  const btn = $('sendBtn'), bar = $('bar'), msg = $('msg');
+  btn.disabled = true; show(bar, true); msg.textContent = '';
+  const setP = (p) => { bar.firstElementChild.style.width = Math.round(p * 100) + '%'; };
+
+  try {
+    const { uploadId } = await post({ action: 'init', token: cfg.token });
+
+    const n = Math.ceil(file.size / CHUNK);
+    for (let i = 0; i < n; i++) {
+      const part = file.slice(i * CHUNK, Math.min((i + 1) * CHUNK, file.size));
+      msg.textContent = '送信中… ' + (i + 1) + '/' + n;
+      await post({ action: 'chunk', token: cfg.token, uploadId, index: i, data: await b64(part) });
+      setP((i + 1) / n);
+    }
+
+    msg.textContent = 'まとめています…';
+    const fin = await post({
+      action: 'finalize', token: cfg.token, uploadId,
+      filename: file.name || 'recording.m4a',
+      mimeType: file.type || 'audio/mp4',
+      type: typeSlug
+    });
+
+    await clearShared();
+    msg.innerHTML = '<span class="ok">送信しました</span><br>' +
+      '議事録ができたらメールが届きます（60分の録音で10〜20分ほど）。';
+    setFile(null);
+  } catch (e) {
+    msg.innerHTML = '<span class="ng">失敗: ' + esc(e.message) + '</span><br>' +
+      '<span class="note">電波の良い場所でもう一度お試しください。</span>';
+    btn.disabled = false;
+  }
+};
+
+/* ---------- 共有シートから来たファイル ---------- */
+async function pickupShared() {
+  if (!('caches' in window)) return null;
+  try {
+    const c = await caches.open('shared-audio');
+    const [fRes, mRes] = await Promise.all([c.match('/__shared__/file'), c.match('/__shared__/meta')]);
+    if (!fRes || !mRes) return null;
+    const meta = await mRes.json();
+    const blob = await fRes.blob();
+    return new File([blob], meta.name || 'recording.m4a', { type: meta.type || blob.type || 'audio/mp4' });
+  } catch (e) { return null; }
+}
+
+async function clearShared() {
+  try {
+    const c = await caches.open('shared-audio');
+    await Promise.all([c.delete('/__shared__/file'), c.delete('/__shared__/meta')]);
+  } catch (e) { /* 消せなくても実害なし */ }
+}
+
+/* ---------- 起動 ---------- */
+async function start() {
+  show($('setupCard'), false);
+  show($('main'), true);
+  $('epLabel').textContent = cfg.endpoint;
+  if (!cfg.types || !cfg.types.length) {
+    try { cfg.types = (await post({ action: 'types', token: cfg.token })).types; saveCfg(cfg); }
+    catch (e) { cfg.types = [{ slug: 'staff-mtg', label: 'スタッフMTG' }]; }
+  }
+  renderTypes();
+  const shared = await pickupShared();
+  if (shared) setFile(shared); else setFile(null);
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+(async () => {
+  if ('serviceWorker' in navigator) {
+    try { await navigator.serviceWorker.register('sw.js'); } catch (e) { /* 非対応でも手動選択で使える */ }
+  }
+  cfg = loadCfg();
+  if (cfg && cfg.endpoint && cfg.token) start();
+  else { show($('setupCard'), true); show($('main'), false); }
+})();
+</script>
+</body>
+</html>
