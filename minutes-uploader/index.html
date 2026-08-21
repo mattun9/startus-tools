@@ -52,10 +52,19 @@
   /* 送信先URLやエラー文が長いと画面からはみ出すので、どこでも折り返す */
   .note { font-size:13px; color:var(--muted); overflow-wrap:anywhere; word-break:break-word; }
   .hide { display:none !important; }
+  /* アプリ内ブラウザ（LINE等）で開かれたときの警告 */
+  .inapp {
+    background:#fdf3e3; border:1px solid #e8d3a8; border-radius:12px;
+    padding:14px 16px; margin-bottom:14px; font-size:14px; line-height:1.75;
+  }
+  .inapp b { color:#8a5a00; }
+  .inapp ol { margin:8px 0 0; padding-left:1.3em; }
 </style>
 </head>
 <body>
 <div class="wrap">
+
+  <div class="inapp hide" id="inapp"></div>
 
   <h1>議事録アップロード</h1>
 
@@ -262,6 +271,31 @@ async function clearShared() {
   } catch (e) { /* 消せなくても実害なし */ }
 }
 
+/* ---------- アプリ内ブラウザの検出 ---------- */
+/**
+ * LINE等のアプリ内ブラウザではホーム画面に追加できず、保存した設定も
+ * 通常のブラウザへ引き継がれない。気づかず使い続けるのを防ぐため警告を出す。
+ */
+function warnIfInAppBrowser() {
+  var ua = navigator.userAgent || '';
+  var line = /Line\//i.test(ua);
+  var other = /FBAN|FBAV|Instagram|Twitter/i.test(ua);
+  if (!line && !other) return;
+
+  var how = line
+    ? '右下（機種により右上）の <b>⋯</b> をタップ →「<b>他のアプリで開く</b>」または「<b>ブラウザで開く</b>」'
+    : '画面内の <b>⋯</b> メニューから「<b>ブラウザで開く</b>」';
+
+  var el = $('inapp');
+  el.innerHTML =
+    '<b>⚠ ' + (line ? 'LINE' : 'アプリ') + 'の中で開いています</b><br>' +
+    'このままでもファイルは送れますが、<b>ホーム画面に追加できません</b>。' +
+    '設定もこの画面の中だけに保存され、普段のブラウザには引き継がれません。' +
+    '<ol><li>' + how + '</li>' +
+    '<li>Chrome / Safari で開き直してから、ホーム画面に追加してください</li></ol>';
+  show(el, true);
+}
+
 /* ---------- 起動 ---------- */
 async function start() {
   show($('setupCard'), false);
@@ -284,6 +318,7 @@ function esc(s) {
   if ('serviceWorker' in navigator) {
     try { await navigator.serviceWorker.register('sw.js'); } catch (e) { /* 非対応でも手動選択で使える */ }
   }
+  warnIfInAppBrowser();
   applySetupLink();
   cfg = loadCfg();
   if (cfg && cfg.endpoint && cfg.token) start();
