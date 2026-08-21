@@ -229,12 +229,40 @@ function renderTypes() {
   });
 }
 
+// Gemini が扱える音声。標準の録音アプリはたいてい m4a か mp3 を作る。
+const OK_TYPE = /^(audio\/(wav|x-wav|mpeg|mp3|mp4|x-m4a|m4a|aac|ogg|flac|aiff|x-aiff)|video\/mp4)$/i;
+const OK_EXT = /\.(m4a|mp3|wav|aac|ogg|oga|flac|aif|aiff|mp4)$/i;
+
+function fileWarning(f) {
+  const okType = f.type ? OK_TYPE.test(f.type) : null;
+  const okExt = OK_EXT.test(f.name || '');
+  // 種類が取れない端末があるので、拡張子でも見る。両方だめなら警告
+  if (okType === false && !okExt) {
+    return '⚠ この形式（' + (f.type || '不明') + '）は文字起こしできない可能性があります。' +
+           'm4a / mp3 / wav などで録音し直してください。';
+  }
+  const mb = f.size / 1024 / 1024;
+  if (mb > 100) return '⚠ ' + mb.toFixed(0) + 'MB と大きいため、送信に時間がかかります。Wi-Fi推奨。';
+  if (mb > 25) return 'ℹ ' + mb.toFixed(0) + 'MB あります。Wi-Fiでの送信をおすすめします。';
+  return '';
+}
+
 function setFile(f) {
   file = f;
-  $('fileBox').innerHTML = f
-    ? '<div><div class="name">' + esc(f.name || '(名前なし)') + '</div>' +
-      '<div class="size">' + (f.size / 1024 / 1024).toFixed(1) + ' MB</div></div>'
-    : '<div class="note">共有シートから送るか、下のボタンで選んでください。</div>';
+  if (!f) {
+    $('fileBox').innerHTML = '<div class="note">共有シートから送るか、下のボタンで選んでください。</div>';
+    refresh();
+    return;
+  }
+  const d = f.lastModified ? new Date(f.lastModified) : null;
+  const when = d ? d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate() : '';
+  const warn = fileWarning(f);
+  $('fileBox').innerHTML =
+    '<div><div class="name">' + esc(f.name || '(名前なし)') + '</div>' +
+    '<div class="size">' + (f.size / 1024 / 1024).toFixed(1) + ' MB' +
+    (when ? '　録音日: ' + when + '（この日付で議事録を作ります）' : '') + '</div>' +
+    (warn ? '<div class="note" style="margin-top:6px">' + esc(warn) + '</div>' : '') +
+    '</div>';
   refresh();
 }
 
@@ -265,7 +293,8 @@ $('sendBtn').onclick = async () => {
       action: 'finalize', token: cfg.token, uploadId,
       filename: file.name || 'recording.m4a',
       mimeType: file.type || 'audio/mp4',
-      type: typeSlug
+      type: typeSlug,
+      recordedAt: file.lastModified || Date.now()   // 会議日は録音した日にする
     });
 
     await clearShared();
