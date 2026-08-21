@@ -113,6 +113,22 @@ const show = (el, on) => el.classList.toggle('hide', !on);
 function loadCfg() {
   try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; }
 }
+
+/**
+ * 設定リンク（...#u=<送信先>&t=<合言葉>）で開かれたら、その場で設定を保存する。
+ * # 以降はサーバーに送られないので、配信元のログに合言葉が残らない。
+ * 読み取ったらURLから消して、履歴やスクショに残りにくくする。
+ */
+function applySetupLink() {
+  var h = (location.hash || '').replace(/^#/, '');
+  if (!h) return;
+  try {
+    var p = new URLSearchParams(h);
+    var u = p.get('u'), t = p.get('t');
+    if (u && t) saveCfg({ endpoint: u, token: t, types: null });
+  } catch (e) { /* 壊れたリンクは無視して通常の設定画面へ */ }
+  history.replaceState(null, '', location.pathname + location.search);
+}
 function saveCfg(c) { localStorage.setItem(LS, JSON.stringify(c)); }
 
 $('saveBtn').onclick = async () => {
@@ -267,6 +283,7 @@ function esc(s) {
   if ('serviceWorker' in navigator) {
     try { await navigator.serviceWorker.register('sw.js'); } catch (e) { /* 非対応でも手動選択で使える */ }
   }
+  applySetupLink();
   cfg = loadCfg();
   if (cfg && cfg.endpoint && cfg.token) start();
   else { show($('setupCard'), true); show($('main'), false); }
