@@ -46,10 +46,11 @@
   .file .size { color:var(--muted); font-size:13px; }
   .bar { height:8px; background:var(--line); border-radius:99px; overflow:hidden; margin-top:12px; }
   .bar > i { display:block; height:100%; width:0; background:var(--accent); transition:width .2s; }
-  .msg { font-size:14px; margin-top:10px; }
+  .msg { font-size:14px; margin-top:10px; overflow-wrap:anywhere; word-break:break-word; }
   .ok { color:var(--accent); font-weight:600; }
   .ng { color:var(--danger); font-weight:600; }
-  .note { font-size:13px; color:var(--muted); }
+  /* 送信先URLやエラー文が長いと画面からはみ出すので、どこでも折り返す */
+  .note { font-size:13px; color:var(--muted); overflow-wrap:anywhere; word-break:break-word; }
   .hide { display:none !important; }
 </style>
 </head>
