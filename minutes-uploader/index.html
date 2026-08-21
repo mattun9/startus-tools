@@ -130,15 +130,27 @@ function loadCfg() {
  * 読み取ったらURLから消して、履歴やスクショに残りにくくする。
  */
 function applySetupLink() {
-  var h = (location.hash || '').replace(/^#/, '');
-  if (!h) return;
-  try {
-    var p = new URLSearchParams(h);
-    var u = p.get('u'), t = p.get('t');
-    if (u && t) saveCfg({ endpoint: u, token: t, types: null });
-  } catch (e) { /* 壊れたリンクは無視して通常の設定画面へ */ }
-  history.replaceState(null, '', location.pathname + location.search);
+  // # 以降を優先して見る（サーバーに送られないため）。
+  // ただしLINEなどから外部ブラウザへ渡されるとき # 以降が落ちることがあるので、
+  // ? の方も見る。読み取ったらどちらもURLから消す。
+  var found = null;
+  [ (location.hash || '').replace(/^#/, ''),
+    (location.search || '').replace(/^\?/, '') ].forEach(function (raw) {
+    if (found || !raw) return;
+    try {
+      var p = new URLSearchParams(raw);
+      var u = p.get('u'), t = p.get('t');
+      if (u && t) found = { endpoint: u, token: t, types: null };
+    } catch (e) { /* 壊れたリンクは無視 */ }
+  });
+  if (found) {
+    saveCfg(found);
+    history.replaceState(null, '', location.pathname);
+  } else if (location.hash) {
+    history.replaceState(null, '', location.pathname + location.search);
+  }
 }
+
 function saveCfg(c) { localStorage.setItem(LS, JSON.stringify(c)); }
 
 $('saveBtn').onclick = async () => {
