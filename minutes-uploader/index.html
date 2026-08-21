@@ -52,6 +52,16 @@
   /* 送信先URLやエラー文が長いと画面からはみ出すので、どこでも折り返す */
   .note { font-size:13px; color:var(--muted); overflow-wrap:anywhere; word-break:break-word; }
   .hide { display:none !important; }
+  .job { border:1px solid var(--line); border-radius:10px; padding:14px; background:#fcfcfb; }
+  .job + .job { margin-top:10px; }
+  .job .ttl { font-weight:600; word-break:break-all; }
+  .job .state { margin-top:4px; font-size:14px; }
+  .job .state.done { color:var(--accent); font-weight:600; }
+  .job .state.bad { color:var(--danger); font-weight:600; }
+  .spin { display:inline-block; width:13px; height:13px; margin-right:6px; vertical-align:-2px;
+          border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%;
+          animation:sp .8s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
   /* アプリ内ブラウザ（LINE等）で開かれたときの警告 */
   .inapp {
     background:#fdf3e3; border:1px solid #e8d3a8; border-radius:12px;
@@ -101,6 +111,12 @@
     <button id="sendBtn" disabled>送信する</button>
     <div class="bar hide" id="bar"><i></i></div>
     <div class="msg" id="msg"></div>
+
+    <div class="card hide" id="jobsCard">
+      <h2>送信したもの</h2>
+      <div id="jobs"></div>
+      <div style="margin-top:12px"><button class="sub" id="refreshBtn">状態を更新</button></div>
+    </div>
 
     <div class="card" style="margin-top:18px">
       <h2>設定</h2>
@@ -253,15 +269,92 @@ $('sendBtn').onclick = async () => {
     });
 
     await clearShared();
+    addJob(fin.fileId, file.name || 'recording.m4a');
     msg.innerHTML = '<span class="ok">送信しました</span><br>' +
-      '議事録ができたらメールが届きます（60分の録音で10〜20分ほど）。';
+      '下の「送信したもの」で進み具合が見られます。';
     setFile(null);
+    show(bar, false);
+    pollJobs();
   } catch (e) {
     msg.innerHTML = '<span class="ng">失敗: ' + esc(e.message) + '</span><br>' +
       '<span class="note">電波の良い場所でもう一度お試しください。</span>';
     btn.disabled = false;
   }
 };
+
+/* ---------- 送信したものの進捗 ---------- */
+const JOBS_LS = 'startus-minutes-jobs';
+let timer = null;
+
+function loadJobs() {
+  try { return JSON.parse(localStorage.getItem(JOBS_LS) || '[]'); } catch (e) { return []; }
+}
+function saveJobs(v) { localStorage.setItem(JOBS_LS, JSON.stringify(v)); }
+
+function addJob(fileId, name) {
+  if (!fileId) return;
+  const v = loadJobs().filter((j) => j.fileId !== fileId);
+  v.unshift({ fileId, name, at: Date.now() });
+  saveJobs(v.slice(0, 5));           // 直近5件だけ覚えておく
+}
+
+function renderJobs(list) {
+  const box = $('jobs');
+  box.innerHTML = '';
+  show($('jobsCard'), list.length > 0);
+
+  list.forEach((j) => {
+    const st = j.status || {};
+    const done = st.state === 'ready' || st.state === 'committed';
+    const bad = st.state === 'error' || st.state === 'missing';
+
+    const d = document.createElement('div');
+    d.className = 'job';
+
+    let line = esc(st.label || '確認中…');
+    if (st.progress) line += '（' + esc(st.progress) + '）';
+    if (!done && !bad) line = '<span class="spin"></span>' + line;
+
+    d.innerHTML =
+      '<div class="ttl">' + esc(j.name || '(名前なし)') + '</div>' +
+      '<div class="state ' + (done ? 'done' : bad ? 'bad' : '') + '">' + line + '</div>' +
+      (st.topics && st.topics.length
+        ? '<div class="note" style="margin-top:6px">' + esc(st.topics.join('、')) + '</div>' : '') +
+      (st.error ? '<div class="note" style="margin-top:6px">' + esc(st.error) + '</div>' : '');
+
+    if (st.reviewUrl) {
+      const a = document.createElement('button');
+      a.textContent = '議事録を開く';
+      a.style.marginTop = '12px';
+      a.onclick = () => window.open(st.reviewUrl, '_blank');
+      d.appendChild(a);
+    }
+    box.appendChild(d);
+  });
+}
+
+async function pollJobs() {
+  const list = loadJobs();
+  if (!list.length) { show($('jobsCard'), false); return; }
+
+  renderJobs(list);                         // まず今わかっている状態を出す
+  for (const j of list) {
+    try {
+      j.status = await post({ action: 'status', token: cfg.token, fileId: j.fileId });
+    } catch (e) {
+      j.status = { label: '状態を取得できません', state: 'unknown' };
+    }
+  }
+  renderJobs(list);
+
+  // 途中のものがあれば、開いている間だけ自動で見に行く
+  const working = list.some((j) => j.status &&
+    ['waiting', 'new', 'transcribed', 'outlined', 'drafting', 'drafted'].indexOf(j.status.state) !== -1);
+  clearTimeout(timer);
+  if (working) timer = setTimeout(pollJobs, 20000);
+}
+
+$('refreshBtn').onclick = () => pollJobs();
 
 /* ---------- 共有シートから来たファイル ---------- */
 async function pickupShared() {
@@ -320,6 +413,7 @@ async function start() {
   renderTypes();
   const shared = await pickupShared();
   if (shared) setFile(shared); else setFile(null);
+  pollJobs();
 }
 
 function esc(s) {
