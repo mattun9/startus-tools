@@ -52,6 +52,17 @@
   /* 送信先URLやエラー文が長いと画面からはみ出すので、どこでも折り返す */
   .note { font-size:13px; color:var(--muted); overflow-wrap:anywhere; word-break:break-word; }
   .hide { display:none !important; }
+  .tabs { display:flex; gap:8px; margin-bottom:14px; }
+  .tabs button {
+    flex:1; padding:11px; background:#fff; color:var(--muted);
+    border:1px solid var(--line); font-weight:400;
+  }
+  .tabs button.on { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+  textarea {
+    width:100%; min-height:190px; padding:11px 12px; border:1px solid var(--line);
+    border-radius:8px; font:inherit; font-size:15px; line-height:1.6;
+    background:#fcfcfb; color:var(--ink); resize:vertical;
+  }
   .job { border:1px solid var(--line); border-radius:10px; padding:14px; background:#fcfcfb; }
   .job + .job { margin-top:10px; }
   .job .ttl { font-weight:600; word-break:break-all; }
@@ -92,7 +103,12 @@
   <!-- 本体 -->
   <div id="main" class="hide">
 
-    <div class="card">
+    <div class="tabs">
+      <button id="tabAudio" class="on">録音を送る</button>
+      <button id="tabText">文字起こしを貼る</button>
+    </div>
+
+    <div class="card" id="audioCard">
       <h2>音声ファイル</h2>
       <div id="fileBox" class="file">
         <div class="note">共有シートから送るか、下のボタンで選んでください。</div>
@@ -101,6 +117,15 @@
         <button class="sub" id="pickBtn">ファイルを選ぶ</button>
         <input type="file" id="picker" accept="audio/*,video/*" class="hide">
       </div>
+    </div>
+
+    <div class="card hide" id="textCard">
+      <h2>文字起こしテキスト</h2>
+      <textarea id="transcript" placeholder="他のアプリで文字起こしした全文を貼り付けてください。&#10;話者ラベル（話者A: など）があればそのままで大丈夫です。"></textarea>
+      <div class="note" id="charCount" style="margin-top:6px"></div>
+      <label>会議の日付</label>
+      <input type="date" id="meetingDate">
+      <div class="note" style="margin-top:6px">この日付で議事録のファイル名を作ります。</div>
     </div>
 
     <div class="card">
@@ -285,7 +310,41 @@ function setFile(f) {
   refresh();
 }
 
-function refresh() { $('sendBtn').disabled = !(file && typeSlug); }
+/* ---------- 録音 / テキスト の切り替え ---------- */
+// 他のアプリで文字起こし済みの場合や、録音が長すぎる場合に使う。
+// テキストを送ったときは文字起こしの工程を飛ばすので、そのぶん早く仕上がる。
+let mode = 'audio';
+
+function setMode(m) {
+  mode = m;
+  $('tabAudio').classList.toggle('on', m === 'audio');
+  $('tabText').classList.toggle('on', m === 'text');
+  show($('audioCard'), m === 'audio');
+  show($('textCard'), m === 'text');
+  $('sendBtn').textContent = m === 'text' ? 'この文字起こしで議事録を作る' : '送信する';
+  refresh();
+}
+$('tabAudio').onclick = () => setMode('audio');
+$('tabText').onclick = () => setMode('text');
+
+// 日付の初期値は今日
+(() => {
+  const d = new Date(), p = (n) => ('0' + n).slice(-2);
+  $('meetingDate').value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+})();
+
+$('transcript').oninput = () => {
+  const n = $('transcript').value.trim().length;
+  $('charCount').textContent = n ? n.toLocaleString() + ' 字' : '';
+  refresh();
+};
+
+function refresh() {
+  const ready = mode === 'audio'
+    ? !!file
+    : $('transcript').value.trim().length >= 50;
+  $('sendBtn').disabled = !(ready && typeSlug);
+}
 
 $('pickBtn').onclick = () => $('picker').click();
 $('picker').onchange = (e) => { if (e.target.files[0]) setFile(e.target.files[0]); };
@@ -297,29 +356,55 @@ $('sendBtn').onclick = async () => {
   const setP = (p) => { bar.firstElementChild.style.width = Math.round(p * 100) + '%'; };
 
   try {
-    const { uploadId } = await post({ action: 'init', token: cfg.token });
-
-    const n = Math.ceil(file.size / CHUNK);
-    for (let i = 0; i < n; i++) {
-      const part = file.slice(i * CHUNK, Math.min((i + 1) * CHUNK, file.size));
-      msg.textContent = '送信中… ' + (i + 1) + '/' + n + '（' +
-        Math.min(((i + 1) * CHUNK) / 1024 / 1024, file.size / 1024 / 1024).toFixed(0) +
-        ' / ' + (file.size / 1024 / 1024).toFixed(0) + ' MB）';
-      await post({ action: 'chunk', token: cfg.token, uploadId, index: i, data: await b64(part) });
-      setP((i + 1) / n);
+    if (mode === 'text') {
+      msg.textContent = '送信中…';
+      setP(0.5);
+      const r = await post({
+        action: 'text', token: cfg.token, type: typeSlug,
+        text: $('transcript').value,
+        meetingDate: $('meetingDate').value
+      });
+      setP(1);
+      addJob(r.fileId, r.name || '文字起こし');
+      msg.innerHTML = '<span class="ok">送信しました（' + r.chars.toLocaleString() + ' 字）</span><br>' +
+        '文字起こしは済んでいるので、そのまま議事録づくりに入ります。';
+      $('transcript').value = ''; $('charCount').textContent = '';
+      refresh(); show(bar, false); pollJobs();
+      return;
     }
 
-    msg.textContent = 'まとめています…';
-    const fin = await post({
-      action: 'finalize', token: cfg.token, uploadId,
+    // Drive側の受付を作る（以降の分割はGASを経由してDriveへ直接書き込まれる）
+    const init = await post({
+      action: 'init', token: cfg.token,
+      total: file.size,
       filename: file.name || 'recording.m4a',
       mimeType: file.type || 'audio/mp4',
       type: typeSlug,
       recordedAt: file.lastModified || Date.now()   // 会議日は録音した日にする
     });
 
+    const n = Math.ceil(file.size / CHUNK);
+    let fileId = null;
+    for (let i = 0; i < n; i++) {
+      const start = i * CHUNK;
+      const part = file.slice(start, Math.min(start + CHUNK, file.size));
+      msg.textContent = '送信中… ' + (i + 1) + '/' + n + '（' +
+        (Math.min(start + part.size, file.size) / 1024 / 1024).toFixed(0) +
+        ' / ' + (file.size / 1024 / 1024).toFixed(0) + ' MB）';
+      const r = await post({
+        action: 'chunk', token: cfg.token, uploadId: init.uploadId,
+        start: start, data: await b64(part)
+      });
+      if (r.fileId) fileId = r.fileId;
+      setP((i + 1) / n);
+    }
+
+    msg.textContent = 'まとめています…';
+    const fin = await post({ action: 'finalize', token: cfg.token, uploadId: init.uploadId });
+    fileId = fin.fileId || fileId;
+
     await clearShared();
-    addJob(fin.fileId, file.name || 'recording.m4a');
+    addJob(fileId, file.name || 'recording.m4a');
     msg.innerHTML = '<span class="ok">送信しました</span><br>' +
       '下の「送信したもの」で進み具合が見られます。';
     setFile(null);

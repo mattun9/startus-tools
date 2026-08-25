@@ -1,0 +1,28 @@
+{
+  "name": "STARTUS 議事録アップロード",
+  "short_name": "議事録",
+  "description": "録音した会議の音声を送ると、自動で議事録になります",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f7f5",
+  "theme_color": "#2f6f4e",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "share_target": {
+    "action": "./share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "files": [
+        { "name": "audio", "accept": ["audio/*", "video/*"] }
+      ]
+    }
+  }
+}
