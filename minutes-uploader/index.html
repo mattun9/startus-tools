@@ -129,7 +129,7 @@
 
 <script>
 const LS = 'startus-minutes-uploader';
-const CHUNK = 3 * 1024 * 1024;          // 3MB ずつ送る
+const CHUNK = 4 * 1024 * 1024;          // 4MBずつ送る（回数を減らしつつ1回を軽く保つ）
 let cfg = null, file = null, typeSlug = null;
 
 const $ = (id) => document.getElementById(id);
@@ -192,13 +192,32 @@ $('resetBtn').onclick = () => {
 
 /* ---------- 通信 ---------- */
 // Content-Type を指定しない = プリフライトが飛ばない（GASはOPTIONSに応答できないため）
-async function post(payload, endpoint) {
-  const res = await fetch(endpoint || cfg.endpoint, { method: 'POST', body: JSON.stringify(payload) });
-  const txt = await res.text();
-  let j;
-  try { j = JSON.parse(txt); } catch (e) { throw new Error('応答が不正です'); }
-  if (!j.ok) throw new Error(j.error || '不明なエラー');
-  return j;
+async function post(payload, endpoint, tries) {
+  const waits = [1000, 3000, 8000];
+  const max = (tries === undefined) ? waits.length : tries;
+  let last = null;
+
+  for (let i = 0; ; i++) {
+    try {
+      const res = await fetch(endpoint || cfg.endpoint, { method: 'POST', body: JSON.stringify(payload) });
+      const txt = await res.text();
+      let j;
+      try { j = JSON.parse(txt); } catch (e) { throw new Error('応答が不正です（' + res.status + '）'); }
+      if (!j.ok) throw new Error(j.error || '不明なエラー');
+      return j;
+    } catch (e) {
+      last = e;
+      // 合言葉違いなど、やり直しても直らないものは即あきらめる
+      if (/bad token|unknown action/.test(e.message)) throw e;
+      if (i >= max) break;
+      await new Promise((r) => setTimeout(r, waits[Math.min(i, waits.length - 1)]));
+    }
+  }
+  // fetch自体の失敗は "Failed to fetch" としか出ないので、意味の分かる文言にする
+  if (/failed to fetch|networkerror|load failed/i.test(last.message)) {
+    throw new Error('通信が途切れました。電波の良い場所かWi-Fiでもう一度お試しください。');
+  }
+  throw last;
 }
 
 function b64(blob) {
@@ -283,7 +302,9 @@ $('sendBtn').onclick = async () => {
     const n = Math.ceil(file.size / CHUNK);
     for (let i = 0; i < n; i++) {
       const part = file.slice(i * CHUNK, Math.min((i + 1) * CHUNK, file.size));
-      msg.textContent = '送信中… ' + (i + 1) + '/' + n;
+      msg.textContent = '送信中… ' + (i + 1) + '/' + n + '（' +
+        Math.min(((i + 1) * CHUNK) / 1024 / 1024, file.size / 1024 / 1024).toFixed(0) +
+        ' / ' + (file.size / 1024 / 1024).toFixed(0) + ' MB）';
       await post({ action: 'chunk', token: cfg.token, uploadId, index: i, data: await b64(part) });
       setP((i + 1) / n);
     }
