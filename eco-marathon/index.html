@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6f43">
+<title>金沢エコマラソン コースマップ</title>
+<meta name="description" content="第6回金沢エコマラソン（2026年9月27日）のコースマップ。スマホの現在地とコースを重ねて確認できます。">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+:root{
+  --ink:#1b1f1d; --sub:#5b635f; --line:#dfe3e0; --bg:#f4f6f4; --card:#fff;
+  --green:#1f6f43; --course:#e8322b;
+  --c5:#f08c00; --c10:#1e7fd6; --ch:#2e9e44; --warn:#b3261e; --me:#1a73e8;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;color:var(--ink);background:var(--bg);line-height:1.6;-webkit-text-size-adjust:100%}
+header{background:var(--green);color:#fff;padding:12px 16px 10px}
+header h1{margin:0;font-size:1.15rem;line-height:1.35;letter-spacing:.02em}
+header p{margin:2px 0 0;font-size:.85rem;opacity:.92}
+.tabs{display:flex;gap:6px;padding:10px 16px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:1001}
+.tabs button{flex:1;border:2px solid var(--line);background:#fff;border-radius:999px;padding:8px 4px;font:inherit;font-weight:700;font-size:.95rem;color:var(--sub);cursor:pointer;min-height:44px}
+.tabs button[aria-pressed="true"]{color:#fff;border-color:transparent}
+.tabs button[data-ev="half"][aria-pressed="true"]{background:var(--ch)}
+.tabs button[data-ev="10k"][aria-pressed="true"]{background:var(--c10)}
+.tabs button[data-ev="5k"][aria-pressed="true"]{background:var(--c5)}
+.mapwrap{position:relative}
+#map{height:62vh;min-height:360px;max-height:720px;background:#dde3de}
+.mapbtns{position:absolute;right:10px;top:10px;z-index:1000;display:flex;flex-direction:column;gap:8px}
+.mapbtns button,.locbtn{font:inherit;border:0;border-radius:10px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);padding:8px 10px;font-size:.8rem;font-weight:700;color:var(--ink);cursor:pointer;min-height:40px}
+.locbtn{position:absolute;right:10px;bottom:24px;z-index:1000;background:var(--me);color:#fff;font-size:1rem;padding:12px 16px;border-radius:999px;min-height:48px}
+.locbtn.on{background:#fff;color:var(--me);outline:2px solid var(--me)}
+.status{margin:0;padding:12px 16px;background:#fff;border-bottom:1px solid var(--line);font-size:.95rem;min-height:3.2em}
+.status b{font-size:1.05rem}
+.status .warn{color:var(--warn);font-weight:700}
+.status .dim{color:var(--sub);font-size:.85rem}
+main{padding:12px 16px 32px;max-width:760px;margin:0 auto}
+section{scroll-margin-top:72px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 14px 12px;margin:0 0 14px}
+section h2{font-size:1rem;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+section h2 .pill{font-size:.75rem;color:#fff;border-radius:999px;padding:1px 8px;background:var(--evc,var(--green))}
+.steps{list-style:none;margin:0;padding:0}
+.steps li{display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px dashed var(--line)}
+.steps li:first-child{border-top:0}
+.steps input{width:24px;height:24px;flex:none;accent-color:var(--evc,var(--green))}
+.steps label{flex:1;cursor:pointer}
+.steps .km{font-variant-numeric:tabular-nums;color:var(--sub);font-size:.85rem;white-space:nowrap}
+.steps li.next{background:#fff7d6;border-radius:8px}
+.steps li.next label::before{content:"次 ▶ ";color:var(--warn);font-weight:700}
+.steps li.done label{color:var(--sub);text-decoration:line-through}
+.dir{display:inline-block;font-size:.72rem;font-weight:700;border-radius:4px;padding:0 5px;margin-right:4px;vertical-align:1px}
+.dir.yama{background:#e8eefc;color:#1d4fb8}
+.dir.umi{background:#e3f4f4;color:#0d6b6b}
+.small{font-size:.85rem;color:var(--sub)}
+.linkbtn{font:inherit;font-size:.85rem;background:none;border:0;color:var(--green);text-decoration:underline;padding:4px 0;cursor:pointer}
+.photos{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x mandatory}
+.ph{flex:0 0 72%;max-width:300px;scroll-snap-align:start;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;cursor:pointer;text-align:left;padding:0;font:inherit;color:inherit}
+.ph img{display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;background:#eee}
+.ph div{padding:6px 8px 8px;font-size:.82rem;line-height:1.45}
+.ph .tag{display:inline-block;background:#fde7d9;color:#9a3b00;font-weight:700;border-radius:4px;padding:0 5px;margin-right:4px}
+.notes{margin:0;padding-left:1.2em}
+.notes li{margin:4px 0}
+.diagram img{width:100%;height:auto;border:1px solid var(--line);border-radius:8px;display:block}
+footer{font-size:.75rem;color:var(--sub);text-align:center;padding:0 16px 28px}
+/* map markers */
+.tm{background:none;border:0}
+.turn{width:46px;height:46px;border-radius:50%;background:var(--c,#222);color:#fff;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;font-weight:800;transition:opacity .2s}
+.turn b{font-size:.8rem}
+.turn span{font-size:.55rem;font-weight:700}
+.turn.off{opacity:.28}
+.sg{background:#111;color:#fff;border:3px solid #fff;border-radius:10px;padding:4px 7px;font-weight:800;font-size:.8rem;white-space:nowrap;box-shadow:0 1px 5px rgba(0,0,0,.45);text-align:center;line-height:1.2}
+.lbl{background:rgba(255,255,255,.88);border:0;border-radius:4px;box-shadow:none;padding:1px 5px;font-size:.7rem;font-weight:700;color:#333}
+.lbl::before{display:none}
+.pin{width:28px;height:28px;border-radius:50%;background:#fff;border:2px solid #555;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.pin.fork{background:#ff8a00;border-color:#fff}
+.pin svg{width:15px;height:15px}
+.icon{width:26px;height:26px;border-radius:6px;background:#fff;border:2px solid #333;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.leaflet-popup-content{margin:10px 12px;font-size:.85rem;line-height:1.5}
+.leaflet-popup-content img{width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;border-radius:6px;display:block;margin-bottom:6px}
+.leaflet-popup-content b{font-size:.95rem}
+.hidden-ev{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>第6回 金沢エコマラソン コースマップ</h1>
+  <p>2026年9月27日（日）<strong>12:00 スタート</strong>（全種目同時）／犀川緑地 右岸（大豆田大橋たもと）</p>
+</header>
+
+<nav class="tabs" aria-label="種目">
+  <button type="button" data-ev="half" aria-pressed="false">ハーフ</button>
+  <button type="button" data-ev="10k" aria-pressed="false">10km</button>
+  <button type="button" data-ev="5k" aria-pressed="false">5km</button>
+</nav>
+
+<div class="mapwrap">
+  <div id="map" role="application" aria-label="コースの地図"></div>
+  <div class="mapbtns">
+    <button type="button" id="btnLayer">地図に切替</button>
+    <button type="button" id="btnFit">コース全体</button>
+  </div>
+  <button type="button" class="locbtn" id="btnLoc">📍 現在地を表示</button>
+</div>
+<p class="status" id="status">「現在地を表示」を押すと、今いる場所が<b style="color:var(--me)">青い点</b>で出ます。赤い線がコースです。</p>
+
+<main>
+  <section id="secSteps">
+    <h2>折返しの順番 <span class="pill" id="evPill"></span></h2>
+    <ol class="steps" id="steps"></ol>
+    <p class="small" style="margin:6px 0 0">折り返したら毎回スタート前を通過して、反対側の折返しへ向かいます。通過したらチェック。「次 ▶」が次の目標です。<button type="button" class="linkbtn" id="btnReset">チェックを消す</button></p>
+  </section>
+
+  <section>
+    <h2>迷いやすい場所（写真）</h2>
+    <p class="small" style="margin:0 0 8px">オレンジの印が分岐です。写真の<strong>矢印の方向</strong>へ進んでください。タップすると地図で場所を表示します。（写真は2024年撮影・位置はおおよそ）</p>
+    <div class="photos" id="photos"></div>
+  </section>
+
+  <section>
+    <h2>大事なこと</h2>
+    <ul class="notes">
+      <li><strong>左側通行</strong>。往復コースなので、すれ違うランナーと自転車に注意。</li>
+      <li><span class="dir yama">山側</span>＝上流（犀川神社の方）、<span class="dir umi">海側</span>＝下流（二ツ寺橋の方）。</li>
+      <li>折返しは<strong>コーン・スタッフの指示</strong>が優先です。地図の折返し位置は目安です。</li>
+      <li>金沢高架〜雪吊橋のあたりは<strong>工事区間</strong>（道幅がせまい・鉄板の段差）。</li>
+      <li>給水：スタート／ゴール、6km折返し。トイレ：豆田グラウンド・芸術村、1km折返し付近。</li>
+      <li>制限時間：10km <strong>13:30</strong>／ハーフ <strong>15:00</strong>（スタートから90分／180分）。</li>
+      <li>走りながらの画面操作は危険です。確認するときは<strong>コースの端で立ち止まって</strong>ください。</li>
+    </ul>
+  </section>
+
+  <section class="diagram">
+    <h2>コース図</h2>
+    <a href="course_full.jpg" target="_blank" rel="noopener"><img src="course.jpg" alt="コース図。大豆田大橋たもとスタート、山側1km折返し、海側3.5km・6km折返し" loading="lazy" width="1100" height="1556"></a>
+    <p class="small" style="margin:6px 0 0"><a href="course_full.jpg" download="金沢エコマラソン_コース図.jpg">コース図をダウンロード（画像）</a></p>
+  </section>
+</main>
+
+<footer>
+  主催：ecomarathon.run ／ 共催：STARTUS（かなざわ総合スポーツクラブ）<br>
+  地図：国土地理院（地理院タイル）・コースの線：© OpenStreetMap contributors
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+const D = {"S": 1000, "course": [[36.563791, 136.64519], [36.563898, 136.644981], [36.563882, 136.644851], [36.563932, 136.644732], [36.564014, 136.64457], [36.564094, 136.644409], [36.564245, 136.644127], [36.564315, 136.644009], [36.564397, 136.643839], [36.564435, 136.643743], [36.564544, 136.643574], [36.56474, 136.643271], [36.564818, 136.643189], [36.565004, 136.642976], [36.565122, 136.642827], [36.56525, 136.642653], [36.565549, 136.64228], [36.565765, 136.642012], [36.566368, 136.641246], [36.566472, 136.641114], [36.566673, 136.640808], [36.566773, 136.640691], [36.566887, 136.640505], [36.566989, 136.640341], [36.567171, 136.64002], [36.567528, 136.639406], [36.567653, 136.639192], [36.567805, 136.638906], [36.567942, 136.638598], [36.568211, 136.637827], [36.568443, 136.637149], [36.568598, 136.636733], [36.568749, 136.636388], [36.568816, 136.636255], [36.568969, 136.635942], [36.569279, 136.635293], [36.569328, 136.635165], [36.569588, 136.634181], [36.569899, 136.633462], [36.570285, 136.632849], [36.570834, 136.632062], [36.571525, 136.631171], [36.571899, 136.630639], [36.572047, 136.630478], [36.572287, 136.630205], [36.572498, 136.629931], [36.572717, 136.629639], [36.572834, 136.629463], [36.573009, 136.629242], [36.573312, 136.628854], [36.573629, 136.628448], [36.573745, 136.628351], [36.573915, 136.628192], [36.574141, 136.627896], [36.574288, 136.627544], [36.57439, 136.627298], [36.574586, 136.6268], [36.574737, 136.62639], [36.574825, 136.626038], [36.574863, 136.625967], [36.574907, 136.625909], [36.574975, 136.625858], [36.575123, 136.625867], [36.575165, 136.625815], [36.575228, 136.625256], [36.575286, 136.62483], [36.575348, 136.624408], [36.575379, 136.624213], [36.575413, 136.62402], [36.57545, 136.623704], [36.575474, 136.623352], [36.575522, 136.622677], [36.57561, 136.621737], [36.57565, 136.620814], [36.575672, 136.620405], [36.575677, 136.620007], [36.575656, 136.619342], [36.575636, 136.619036], [36.575522, 136.61832], [36.575435, 136.618032], [36.575305, 136.61761], [36.575283, 136.617538], [36.575163, 136.617244], [36.575144, 136.617163], [36.57497, 136.615562], [36.574948, 136.615091], [36.574925, 136.614842], [36.574925, 136.614752], [36.57508, 136.613874], [36.575102, 136.613572], [36.575095, 136.612499], [36.575044, 136.612134], [36.575002, 136.611789], [36.574983, 136.611513], [36.574982, 136.611155], [36.574995, 136.610725], [36.575052, 136.610333], [36.575101, 136.610086], [36.575158, 136.609969], [36.575209, 136.609843], [36.575285, 136.609689], [36.575392, 136.609513], [36.575444, 136.609434], [36.57556, 136.609326], [36.575684, 136.609187], [36.575813, 136.609068], [36.576101, 136.608851], [36.576531, 136.608582], [36.57687, 136.60838], [36.57709, 136.6083], [36.57762, 136.60815], [36.57794, 136.60811], [36.57833, 136.6081], [36.57881, 136.60804], [36.5794, 136.60792], [36.58002, 136.60773], [36.58032, 136.6076], [36.58048, 136.60752], [36.58091, 136.60726], [36.58138, 136.60692], [36.58203, 136.60639], [36.58215, 136.60629], [36.58258, 136.60589], [36.58285, 136.6056], [36.583, 136.60557], [36.58306, 136.60554], [36.58362, 136.60508], [36.58387, 136.60488], [36.58479, 136.60411], [36.58496, 136.60401], [36.58513, 136.60382], [36.58532, 136.60363], [36.58574, 136.6032], [36.585909, 136.603013]], "points": {"sg": [36.568879, 136.636126], "t550": [36.566301, 136.641331], "t1k": [36.563791, 136.64519], "t35": [36.575559, 136.62228], "t6k": [36.585909, 136.603013], "km5": [36.578105, 136.608106]}, "works": [[36.574989, 136.610911], [36.574995, 136.610725], [36.575052, 136.610333], [36.575101, 136.610086], [36.575158, 136.609969], [36.575209, 136.609843], [36.575285, 136.609689], [36.575392, 136.609513], [36.575444, 136.609434], [36.57556, 136.609326], [36.575684, 136.609187], [36.575813, 136.609068], [36.576101, 136.608851], [36.576531, 136.608582], [36.57687, 136.60838], [36.57709, 136.6083], [36.57762, 136.60815], [36.57794, 136.60811], [36.57833, 136.6081], [36.57881, 136.60804], [36.578911, 136.608019]], "photos": [{"id": "s1_L1", "s": 135, "dir": "up", "ll": [36.563894, 136.644949], "rel": -975}, {"id": "s1_L2", "s": 200, "dir": "up", "ll": [36.564144, 136.644315], "rel": -910}, {"id": "s1_L3", "s": 255, "dir": "up", "ll": [36.564413, 136.643799], "rel": -855}, {"id": "s1_L4", "s": 296, "dir": "up", "ll": [36.564635, 136.643434], "rel": -814}, {"id": "s1_L5", "s": 403, "dir": "up", "ll": [36.565308, 136.642581], "rel": -707}, {"id": "s1_L6", "s": 819, "dir": "up", "ll": [36.56773, 136.639047], "rel": -291}, {"id": "s1_R1", "s": 796, "dir": "down", "ll": [36.567613, 136.63926], "rel": -314}, {"id": "s1_R2", "s": 1150, "dir": "down", "ll": [36.569064, 136.635742], "rel": 40}, {"id": "s2_TL", "s": 1308, "dir": "up", "ll": [36.569614, 136.63412], "rel": 198}, {"id": "s2_TR", "s": 1345, "dir": "down", "ll": [36.569772, 136.633756], "rel": 235}, {"id": "s2_R2", "s": 1760, "dir": "down", "ll": [36.572226, 136.630275], "rel": 650}, {"id": "s2_L2", "s": 1950, "dir": "up", "ll": [36.573405, 136.628735], "rel": 840}, {"id": "s2_R3", "s": 1980, "dir": "down", "ll": [36.573593, 136.628495], "rel": 870}, {"id": "s2_L3", "s": 2245, "dir": "up", "ll": [36.574828, 136.626032], "rel": 1135}, {"id": "s2_R4", "s": 2270, "dir": "down", "ll": [36.574994, 136.625859], "rel": 1160}, {"id": "s2_L4", "s": 2497, "dir": "up", "ll": [36.575461, 136.623539], "rel": 1387}, {"id": "s2_R5", "s": 2966, "dir": "down", "ll": [36.57552, 136.618316], "rel": 1856}, {"id": "s3_R1", "s": 3715, "dir": "down", "ll": [36.575101, 136.610085], "rel": 2605}, {"id": "s3_R2", "s": 3770, "dir": "down", "ll": [36.575362, 136.609563], "rel": 2660}, {"id": "s3_L1", "s": 3790, "dir": "up", "ll": [36.575482, 136.609399], "rel": 2680}, {"id": "s3_R3", "s": 3900, "dir": "down", "ll": [36.576305, 136.608724], "rel": 2790}, {"id": "s3_L2", "s": 4120, "dir": "up", "ll": [36.578195, 136.608103], "rel": 3010}, {"id": "s3_R4", "s": 4000, "dir": "down", "ll": [36.57713, 136.608289], "rel": 2890}, {"id": "s3_R5", "s": 5100, "dir": "down", "ll": [36.585841, 136.603087], "rel": 3990}]};
+
+// ---- 種目の定義（km は公式コース図の通過距離） ----
+const TURNS = {
+  t550:{name:'550m折返',  side:'yama', rel:-550},
+  t1k: {name:'1km折返',   side:'yama', rel:-1000},
+  t35: {name:'3.5km折返', side:'umi',  rel:1500},
+  t6k: {name:'6km折返',   side:'umi',  rel:4000},
+};
+const EV = {
+  half:{label:'ハーフ', color:'var(--ch)', hex:'#2e9e44', umiEnd:4000,
+    steps:[['t550','0.55km'],['t1k','2.1km'],['t6k','7.1km・給水'],['t1k','12.1km'],['t6k','17.1km・給水'],['goal','21.1km']],
+    uses:['t550','t1k','t6k']},
+  '10k':{label:'10km', color:'var(--c10)', hex:'#1e7fd6', umiEnd:4000,
+    steps:[['t1k','1km'],['t6k','6km・給水'],['goal','10km']],
+    uses:['t1k','t6k']},
+  '5k':{label:'5km', color:'var(--c5)', hex:'#f08c00', umiEnd:1500,
+    steps:[['t1k','1km'],['t35','3.5km'],['goal','5km']],
+    uses:['t1k','t35']},
+};
+const PHOTO = {
+  s1_L1:['1km折返の手前（石垣沿い）'],
+  s1_L2:['1km折返へ向かう道'],
+  s1_L3:['橋の下をくぐる'],
+  s1_L4:['分岐','右の道（川側）へ'],
+  s1_L5:['分岐','矢印の道へ'],
+  s1_L6:['分岐','矢印の道へ'],
+  s1_R1:['石垣沿いを海側へ'],
+  s1_R2:['スタート付近から海側を見たところ。大豆田大橋をくぐる'],
+  s2_TL:['分岐','矢印の道へ（ゴール方向）'],
+  s2_TR:['豆田グラウンド沿いの道'],
+  s2_R2:['分岐','右の道へ（若宮大橋の手前）'],
+  s2_L2:['山側へ戻る道'],
+  s2_R3:['分岐','広場の前を矢印の方へ'],
+  s2_L3:['広い舗装路のカーブ'],
+  s2_R4:['分岐','矢印の方へ（左にそれない）'],
+  s2_L4:['並木沿いの道'],
+  s2_R5:['分岐','矢印の道へ（示野中橋の手前）'],
+  s3_R1:['工事区間（金沢高架の下）'],
+  s3_R2:['道幅がせまい'],
+  s3_L1:['高架の下（工事区間）'],
+  s3_R3:['鉄板の段差あり'],
+  s3_L2:['分岐','右の道（川側）へ（雪吊橋のそば）'],
+  s3_R4:['分岐','矢印の道へ（雪吊橋の手前）'],
+  s3_R5:['分岐','右側の道へ（6km折返の手前・給水）'],
+};
+const LABELS = [
+  ['犀川神社',36.56366,136.64591],['新御影橋',36.56546,136.64165],['鉄道橋',36.56690,136.63975],
+  ['大豆田大橋',36.56874,136.63500],['豆田グラウンド',36.57049,136.63410],['若宮大橋',36.57248,136.62966],
+  ['示野中橋',36.57484,136.61794],['金沢高架',36.57430,136.60950],['雪吊橋',36.57763,136.60743],['二ツ寺橋',36.58561,136.60239],
+];
+
+// ---- 座標計算（ローカル平面近似） ----
+const RAD=Math.PI/180, R=6371000, KX=Math.cos(36.575*RAD)*R*RAD, KY=R*RAD;
+const P = D.course.map(([la,lo])=>[lo*KX, la*KY]);
+const CUM=[0]; for(let i=1;i<P.length;i++) CUM.push(CUM[i-1]+Math.hypot(P[i][0]-P[i-1][0],P[i][1]-P[i-1][1]));
+function snap(la,lo){
+  const x=lo*KX, y=la*KY; let best={d:1e9,s:0};
+  for(let i=0;i<P.length-1;i++){
+    const [ax,ay]=P[i],[bx,by]=P[i+1], dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy;
+    let t=L2?((x-ax)*dx+(y-ay)*dy)/L2:0; t=Math.max(0,Math.min(1,t));
+    const d=Math.hypot(x-(ax+t*dx),y-(ay+t*dy));
+    if(d<best.d) best={d, s:CUM[i]+t*Math.sqrt(L2)};
+  }
+  return best;
+}
+function slice(s0,s1){ // 描画用に一部区間を切り出す
+  const out=[]; const at=s=>{for(let i=1;i<P.length;i++){if(CUM[i]>=s){const t=(s-CUM[i-1])/(CUM[i]-CUM[i-1]);const a=D.course[i-1],b=D.course[i];return [a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])];}}return D.course[D.course.length-1];};
+  out.push(at(s0)); for(let i=0;i<P.length;i++) if(CUM[i]>s0&&CUM[i]<s1) out.push(D.course[i]); out.push(at(s1)); return out;
+}
+const km=m=>(m/1000).toFixed(1);
+
+// ---- 地図 ----
+const map=L.map('map',{zoomControl:true,attributionControl:true,tap:true}).setView(D.points.sg,15);
+const photo=L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg',{maxZoom:19,maxNativeZoom:18,attribution:'<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>'});
+const std=L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png',{maxZoom:19,maxNativeZoom:18,attribution:'<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>'});
+let usePhoto=true; photo.addTo(map);
+document.getElementById('btnLayer').onclick=e=>{
+  usePhoto=!usePhoto; if(usePhoto){map.removeLayer(std);photo.addTo(map);}else{map.removeLayer(photo);std.addTo(map);}
+  e.currentTarget.textContent=usePhoto?'地図に切替':'写真に切替';
+};
+map.attributionControl.addAttribution('© OpenStreetMap contributors');
+
+const S=D.S, TOTAL=CUM[CUM.length-1];
+const courseCase=L.polyline(D.course,{color:'#fff',weight:10,opacity:.9}).addTo(map);
+const courseOff=L.polyline([],{color:'#888',weight:5,opacity:.8,dashArray:'6 8'}).addTo(map);
+const courseOn=L.polyline([],{color:'#e8322b',weight:6,opacity:1}).addTo(map);
+L.polyline(D.works,{color:'#ffd400',weight:14,opacity:.55,lineCap:'butt'}).addTo(map)
+  .bindPopup('<b>工事区間</b><br>道幅がせまく、鉄板の段差があります。足元に注意。');
+
+const detail=L.layerGroup(); const photoLayer=L.layerGroup();
+LABELS.forEach(([t,la,lo])=>detail.addLayer(L.tooltip({permanent:true,direction:'right',className:'lbl',offset:[6,0]}).setLatLng([la,lo]).setContent(t)));
+
+const icon=(html,size)=>L.divIcon({className:'tm',html,iconSize:[size,size],iconAnchor:[size/2,size/2],popupAnchor:[0,-size/2]});
+L.marker(D.points.sg,{icon:L.divIcon({className:'tm',html:'<div class="sg">START<br>GOAL</div>',iconSize:[60,40],iconAnchor:[30,20]}),zIndexOffset:900})
+  .addTo(map).bindPopup('<b>スタート／ゴール</b><br>受付・給水・トイレ（豆田グラウンド）<br>12:00 全種目同時スタート');
+L.marker([36.57049,136.63410],{icon:icon('<div class="icon">WC</div>',26)}).addTo(detail).bindPopup('<b>トイレ</b>（豆田グラウンド）');
+L.marker([36.57002,136.63789],{icon:icon('<div class="icon">WC</div>',26)}).addTo(detail).bindPopup('<b>トイレ</b>（芸術村）');
+
+const turnMarkers={};
+const turnHtml=(k,c,off)=>{const n=TURNS[k].name.replace('折返','');return `<div class="turn${off?' off':''}" style="--c:${c}"><b>${n}</b><span>折返</span></div>`;};
+const TURN_POP={
+  t550:'<b>550m折返（ハーフの1回目だけ）</b><br>ハーフはここで折り返して、スタート前を通過し、そのまま1km折返へ。',
+  t1k:'<b>1km折返（全種目）</b><br>犀川神社の付近。ハーフは2回通ります（2.1km・12.1km）。<br>コース図ではこの付近にトイレあり。',
+  t35:'<b>3.5km折返（5kmだけ）</b><br>5kmはここで折り返してゴールへ。10km・ハーフはそのまま海側へ。',
+  t6k:'<b>6km折返（10km・ハーフ）</b><br>二ツ寺橋の手前。給水あり。ハーフは2回通ります（7.1km・17.1km）。',
+};
+for(const k in TURNS){
+  turnMarkers[k]=L.marker(D.points[k],{icon:icon(turnHtml(k,'#222'),46),zIndexOffset:800}).addTo(map).bindPopup(TURN_POP[k]);
+}
+
+// 写真ピン
+const camSvg='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 4 7.2 6H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.2L15 4H9zm3 5a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/></svg>';
+const photoMarkers={};
+const where=rel=>Math.abs(rel)<60?'スタート／ゴール付近':(rel<0?`スタートから<span class="dir yama">山側</span>へ約${km(-rel)}km`:`スタートから<span class="dir umi">海側</span>へ約${km(rel)}km`);
+const dirText=d=>d==='up'?'<span class="dir yama">山側</span>へ向かうとき':'<span class="dir umi">海側</span>へ向かうとき';
+function photoCaption(p){
+  const m=PHOTO[p.id]||['']; const fork=m[0]==='分岐';
+  return {fork, title: fork?`分岐：${m[1]}`:m[0]};
+}
+D.photos.forEach(p=>{
+  const c=photoCaption(p);
+  const mk=L.marker(p.ll,{icon:icon(`<div class="pin${c.fork?' fork':''}" style="color:${c.fork?'#fff':'#444'}">${camSvg}</div>`,28),zIndexOffset:c.fork?500:300})
+    .bindPopup(`<img src="photos/${p.id}.jpg" alt="" width="720" height="540"><b>${c.title}</b><br>${dirText(p.dir)}／${where(p.rel)}`,{maxWidth:280,minWidth:220});
+  photoMarkers[p.id]=mk;
+});
+
+function zoomDetail(){ const z=map.getZoom(); const on=z>=15;
+  [detail,photoLayer].forEach(g=>{ if(on&&!map.hasLayer(g)) g.addTo(map); if(!on&&map.hasLayer(g)) map.removeLayer(g); }); }
+map.on('zoomend',zoomDetail);
+function fit(){ map.fitBounds(courseCase.getBounds(),{padding:[20,20]}); zoomDetail(); }
+document.getElementById('btnFit').onclick=()=>{follow=false;fit();};
+fit();
+
+// ---- 種目の切替 ----
+let ev='half';
+try{ ev=localStorage.getItem('eco2026-ev')||'half'; }catch(e){}
+function setEv(k){
+  ev=k; try{localStorage.setItem('eco2026-ev',k);}catch(e){}
+  const E=EV[k];
+  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.ev===k));
+  document.documentElement.style.setProperty('--evc',E.hex);
+  document.getElementById('evPill').textContent=E.label;
+  const end=S+E.umiEnd;
+  courseOn.setLatLngs(slice(0,end)); courseOff.setLatLngs(end<TOTAL?slice(end,TOTAL):[]);
+  for(const t in turnMarkers){
+    const on=E.uses.includes(t);
+    turnMarkers[t].setIcon(icon(turnHtml(t,on?E.hex:'#222',!on),46));
+    turnMarkers[t].setZIndexOffset(on?850:100);
+  }
+  D.photos.forEach(p=>{
+    const show=p.rel<=E.umiEnd+30;
+    const mk=photoMarkers[p.id];
+    if(show&&!photoLayer.hasLayer(mk)) photoLayer.addLayer(mk); if(!show&&photoLayer.hasLayer(mk)) photoLayer.removeLayer(mk);
+  });
+  renderSteps(); renderPhotos(); if(lastPos) showPos(lastPos);
+}
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>setEv(b.dataset.ev));
+
+// ---- 折返しチェック ----
+function getChk(){ try{ return JSON.parse(localStorage.getItem('eco2026-chk-'+ev)||'[]'); }catch(e){ return []; } }
+function setChk(a){ try{ localStorage.setItem('eco2026-chk-'+ev,JSON.stringify(a)); }catch(e){} }
+function renderSteps(){
+  const E=EV[ev], chk=getChk(), ol=document.getElementById('steps'); ol.innerHTML='';
+  const next=E.steps.findIndex((s,i)=>!chk[i]);
+  E.steps.forEach(([k,note],i)=>{
+    const li=document.createElement('li'); if(chk[i]) li.className='done'; else if(i===next) li.className='next';
+    const id='st'+i; const name=k==='goal'?'ゴール':TURNS[k].name;
+    const side=k==='goal'?'':`<span class="dir ${TURNS[k].side}">${TURNS[k].side==='yama'?'山側':'海側'}</span>`;
+    li.innerHTML=`<input type="checkbox" id="${id}" ${chk[i]?'checked':''}><label for="${id}">${side}<strong>${name}</strong></label><span class="km">${note}</span>`;
+    li.querySelector('input').onchange=e=>{const a=getChk();a[i]=e.target.checked;setChk(a);renderSteps();if(lastPos)showPos(lastPos);};
+    ol.appendChild(li);
+  });
+}
+document.getElementById('btnReset').onclick=()=>{setChk([]);renderSteps();};
+
+// ---- 写真リスト ----
+function renderPhotos(){
+  const E=EV[ev], box=document.getElementById('photos'); box.innerHTML='';
+  D.photos.filter(p=>p.rel<=E.umiEnd+30).sort((a,b)=>a.rel-b.rel).forEach(p=>{
+    const c=photoCaption(p); const b=document.createElement('button'); b.type='button'; b.className='ph';
+    b.innerHTML=`<img src="photos/${p.id}.jpg" alt="" loading="lazy" width="720" height="540"><div>${c.fork?'<span class="tag">分岐</span>':''}${c.fork?PHOTO[p.id][1]:c.title}<br><span class="small">${dirText(p.dir)}／${where(p.rel)}</span></div>`;
+    b.onclick=()=>{follow=false;map.setView(p.ll,17,{animate:false});zoomDetail();photoMarkers[p.id].openPopup();document.getElementById('map').scrollIntoView({behavior:'smooth',block:'center'});};
+    box.appendChild(b);
+  });
+}
+
+// ---- 現在地 ----
+let watchId=null, meDot=null, meAcc=null, follow=true, lastPos=null, firstFix=true;
+map.on('dragstart',()=>{follow=false;});
+const st=document.getElementById('status'), btn=document.getElementById('btnLoc');
+function showPos(pos){
+  lastPos=pos;
+  const la=pos.coords.latitude, lo=pos.coords.longitude, acc=Math.round(pos.coords.accuracy);
+  if(!meDot){
+    meAcc=L.circle([la,lo],{radius:acc,color:'#1a73e8',weight:1,fillOpacity:.12}).addTo(map);
+    meDot=L.circleMarker([la,lo],{radius:9,color:'#fff',weight:3,fillColor:'#1a73e8',fillOpacity:1}).addTo(map);
+  } else { meDot.setLatLng([la,lo]); meAcc.setLatLng([la,lo]).setRadius(acc); }
+  if(firstFix){ map.setView([la,lo],17); firstFix=false; } else if(follow){ map.panTo([la,lo]); }
+  const sn=snap(la,lo), rel=sn.s-S, E=EV[ev];
+  let html='';
+  if(sn.d>1500){ html=`<span class="warn">コースから遠い場所にいます（約${km(sn.d)}km）。</span><br><span class="dim">会場：犀川緑地 右岸（大豆田大橋たもと）</span>`; }
+  else{
+    if(sn.d>60) html+=`<span class="warn">⚠ コースから約${Math.round(sn.d/10)*10}m離れています。赤い線に戻ってください。</span><br>`;
+    html+=`<b>${where(rel).replace('約','約 ')}</b>`;
+    // 種目の折返しまでの距離（山側・海側）
+    const yama=E.uses.filter(t=>TURNS[t].rel<rel).map(t=>[t,rel-TURNS[t].rel]).sort((a,b)=>a[1]-b[1])[0];
+    const umi=E.uses.filter(t=>TURNS[t].rel>rel).map(t=>[t,TURNS[t].rel-rel]).sort((a,b)=>a[1]-b[1])[0];
+    const parts=[];
+    if(yama) parts.push(`<span class="dir yama">山側</span>${TURNS[yama[0]].name}まで ${km(yama[1])}km`);
+    if(umi) parts.push(`<span class="dir umi">海側</span>${TURNS[umi[0]].name}まで ${km(umi[1])}km`);
+    if(parts.length) html+=`<br>${parts.join('　')}`;
+    const chk=getChk(), ni=E.steps.findIndex((s,i)=>!chk[i]);
+    if(ni>=0){ const k=E.steps[ni][0], tr=k==='goal'?0:TURNS[k].rel;
+      html+=`<br><span class="dim">チェック上の次：${k==='goal'?'ゴール':TURNS[k].name}まで あと${km(Math.abs(tr-rel))}km</span>`; }
+  }
+  if(acc>50) html+=`<br><span class="dim">位置の誤差が大きめです（±${acc}m）。空が開けた場所で少し待つと正確になります。</span>`;
+  st.innerHTML=html;
+}
+function posErr(err){
+  const msg={1:'位置情報の利用が許可されていません。スマホの設定で、ブラウザ（Safari／Chrome）の位置情報を「許可」にしてから、もう一度押してください。',2:'現在地を取得できませんでした。空が開けた場所でもう一度お試しください。',3:'現在地の取得に時間がかかっています。少し待つか、もう一度押してください。'}[err.code]||'現在地を取得できませんでした。';
+  st.innerHTML=`<span class="warn">${msg}</span>`;
+  if(err.code===1) stopLoc();
+}
+function stopLoc(){
+  if(watchId!==null) navigator.geolocation.clearWatch(watchId); watchId=null;
+  btn.textContent='📍 現在地を表示'; btn.classList.remove('on');
+}
+btn.onclick=()=>{
+  if(!('geolocation' in navigator)){ st.innerHTML='<span class="warn">この端末・ブラウザでは現在地を使えません。</span>'; return; }
+  if(watchId!==null){
+    if(!follow&&lastPos){ follow=true; map.setView([lastPos.coords.latitude,lastPos.coords.longitude],Math.max(map.getZoom(),16)); return; }
+    stopLoc(); return;
+  }
+  follow=true; firstFix=true;
+  st.innerHTML='現在地を探しています…（はじめての時は「位置情報の利用を許可」を選んでください）';
+  watchId=navigator.geolocation.watchPosition(showPos,posErr,{enableHighAccuracy:true,maximumAge:3000,timeout:20000});
+  btn.textContent='📍 追従中（もう一度で停止）'; btn.classList.add('on');
+};
+map.on('dragstart',()=>{ if(watchId!==null) btn.textContent='📍 現在地に戻る'; });
+map.on('moveend',()=>{ if(watchId!==null&&follow) btn.textContent='📍 追従中（もう一度で停止）'; });
+
+setEv(EV[ev]?ev:'half');
+</script>
+</body>
+</html>
